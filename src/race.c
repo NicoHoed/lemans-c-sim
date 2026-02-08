@@ -87,16 +87,29 @@ int compare_cars(const void* a, const void* b) {
 
 void race_run_step(RaceContext* race) {
     if (!race || !race->cars) return;
+
+    // --- 1. Safety Car (SC) ---
+    if (race->safety_car_active) {
+        race->safety_car_timer--;
+        if (race->safety_car_timer <= 0) {
+            race->safety_car_active = false; // La SC rentre, drapeau vert
+        }
+    } else {
+        // 1% chance to deploy SC
+        if ((rand() % 100) < 1) { 
+            race->safety_car_active = true;
+            race->safety_car_timer = 5 + (rand() % 10); // Dure entre 5 et 15 ticks
+        }
+    }
     
-    // 2. Update each car
+    // --- 2. Update each car ---
     for (int i = 0; i < race->num_cars; i++) {
-        // Pass BOTH delta_time and safety_car status
         car_update(&race->cars[i], 1.0, race->safety_car_active);
     }
 
-    // 2. Sort the grid to determine positions
+    // --- 3. Sort the grid ---
     qsort(race->cars, race->num_cars, sizeof(Car), compare_cars);
 
-    // 3. Update global race time (approximate)
+    // --- 4. Update global time ---
     race->elapsed_time += 40.0; 
 }
