@@ -15,6 +15,7 @@
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
 void print_status(RaceContext* race) {
+    // Clear console
     printf("\033[H\033[J"); 
 
     int hours = (int)race->elapsed_time / 3600;
@@ -23,7 +24,7 @@ void print_status(RaceContext* race) {
 
     printf("=== LE MANS 24H SIMULATION ===\n");
     
-    // Weather
+    // Weather Display
     if (race->weather == WEATHER_RAIN) {
          printf("Weather: 🌧️  %sRAIN / WET TRACK%s  Time: %02dh %02dm %02ds\n", 
                 ANSI_COLOR_BLUE, ANSI_COLOR_RESET, hours, minutes, seconds);
@@ -32,7 +33,7 @@ void print_status(RaceContext* race) {
                 ANSI_COLOR_YELLOW, ANSI_COLOR_RESET, hours, minutes, seconds);
     }
 
-    // Safety Car
+    // Safety Car Alert
     if (race->safety_car_active) {
         printf("\n\033[43m\033[30m"); 
         printf("************************************************************************\n");
@@ -44,9 +45,11 @@ void print_status(RaceContext* race) {
     }
     
     // Header
-    printf("%-4s | %-20s | %-10s | %-8s | %-12s | %-10s | %-10s | %-6s\n", 
+    // MODIFICATION ICI: "Team" passe à 25 de large
+    printf("%-4s | %-25s | %-10s | %-8s | %-12s | %-10s | %-10s | %-6s\n", 
            "Pos", "Team", "Cat", "Laps", "Gap", "State", "Tire", "Rel%");
-    printf("--------------------------------------------------------------------------------------------------------\n");
+    // La ligne de séparation doit être un peu plus longue pour compenser
+    printf("-------------------------------------------------------------------------------------------------------------\n");
 
     if (race->num_cars == 0) return;
     Car* leader = &race->cars[0];
@@ -54,7 +57,7 @@ void print_status(RaceContext* race) {
     for (int i = 0; i < race->num_cars; i++) {
         Car* c = &race->cars[i];
         
-        // NEW: Check if retired to override colors
+        // Check if retired to override colors
         bool is_retired = (c->state == RETIRED);
         char* base_color = is_retired ? ANSI_COLOR_GRAY : ANSI_COLOR_RESET;
 
@@ -63,7 +66,7 @@ void print_status(RaceContext* race) {
         char cat_str[10];
         
         if (is_retired) {
-             cat_color = ANSI_COLOR_GRAY; // Grey out category too
+             cat_color = ANSI_COLOR_GRAY; 
         } else {
             if (c->category == LMH) cat_color = ANSI_COLOR_RED;
             else if (c->category == LMP2) cat_color = ANSI_COLOR_BLUE;
@@ -92,7 +95,7 @@ void print_status(RaceContext* race) {
         
         if (is_retired) {
             sprintf(state_str, "DNF");
-            state_color = ANSI_COLOR_RED; // Keep DNF red for visibility, or make it Gray
+            state_color = ANSI_COLOR_RED; 
         } else if (c->state == PIT_STOP) {
             sprintf(state_str, "IN PIT");
             state_color = ANSI_COLOR_MAGENTA; 
@@ -120,8 +123,8 @@ void print_status(RaceContext* race) {
         }
 
         // Print Row
-        // Notice we use 'base_color' for text that doesn't have specific highlighting
-        printf("%s%-4d%s | %s%-20s%s | %s%-10s%s | %s%-8d%s | %s%-12s%s | %s%-10s%s | %s%-10s%s | %s%.0f%%%s\n", 
+        // MODIFICATION ICI: %-25.25s force une largeur de 25 ET coupe si c'est plus long
+        printf("%s%-4d%s | %s%-25.25s%s | %s%-10s%s | %s%-8d%s | %s%-12s%s | %s%-10s%s | %s%-10s%s | %s%.0f%%%s\n", 
                base_color, i + 1, ANSI_COLOR_RESET,
                base_color, c->team_name, ANSI_COLOR_RESET,
                cat_color, cat_str, ANSI_COLOR_RESET, 
@@ -135,18 +138,23 @@ void print_status(RaceContext* race) {
 
 int main(void) {
     RaceContext race;
-    race_init(&race, 30); // Create x cars
+    // Request 62 cars to get the full list
+    race_init(&race, 62); 
 
     printf("Starting Race...\n");
     sleep(1);
 
-    // Simulation Loop (Simulate 50 steps = roughly 16 laps)
-    for (int step = 0; step < 50; step++) {
+    // Simulation Loop
+    // Running indefinitely until user stops (Ctrl+C)
+    // or limit it: step < 1000
+    int steps = 0;
+    while(1) {
         race_run_step(&race);
         print_status(&race);
         
-        // Slow down the loop so we can watch it (100ms)
-        usleep(100000); 
+        // Speed of simulation
+        usleep(100000); // 0.1s delay
+        steps++;
     }
 
     printf("\nSimulation Finished.\n");
