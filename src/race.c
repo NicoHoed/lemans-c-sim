@@ -4,17 +4,93 @@
 #include <time.h>
 #include "race.h"
 
-// Helper arrays to generate realistic dummy data
-static const char* LMH_TEAMS[] = {"Ferrari AF Corse", "Toyota Gazoo Racing", "Porsche Penske", "Cadillac Racing", "Peugeot TotalEnergies"};
-static const char* LMP2_TEAMS[] = {"United Autosports", "Team WRT", "Alpine Elf Team", "Vector Sport"};
-static const char* GT3_TEAMS[] = {"Iron Dames", "WRT BMW", "Manthey PureRxcing", "TF Sport Corvette"};
+// --- 2025 ENTRY LIST DATA ---
 
-static const char* DRIVERS[] = {"A. Fuoco", "S. Buemi", "K. Estre", "E. Bamber", "L. Vanthoor", "Sarah Bovy", "V. Rossi"};
+typedef struct {
+    const char* team;
+    const char* driver;
+    CarCategory category;
+} RaceEntry;
 
-// Initialize the race context and generate the grid
+// Extracted from your provided 2025 Entry List PDF
+// Note: We use the first listed driver as the "Lead Driver"
+static const RaceEntry REAL_ENTRIES[] = {
+    // --- HYPERCAR ---
+    {"Aston Martin Thor Team", "Harry Tincknell", LMH},
+    {"Aston Martin Thor Team", "Alex Riberas",    LMH},
+    {"Porsche Penske",         "Felipe Nasr",     LMH},
+    {"Porsche Penske",         "Julien Andlauer", LMH},
+    {"Porsche Penske",         "Kevin Estre",     LMH},
+    {"Toyota Gazoo Racing",    "Mike Conway",     LMH},
+    {"Toyota Gazoo Racing",    "Sebastien Buemi", LMH},
+    {"Cadillac Hertz Jota",    "Will Stevens",    LMH},
+    {"Cadillac Hertz Jota",    "Earl Bamber",     LMH},
+    {"BMW M Team WRT",         "Dries Vanthoor",  LMH},
+    {"BMW M Team WRT",         "Rene Rast",       LMH},
+    {"Alpine Endurance",       "Paul-Loup Chatin",LMH},
+    {"Alpine Endurance",       "Mick Schumacher", LMH},
+    {"Ferrari AF Corse",       "Antonio Fuoco",   LMH},
+    {"Ferrari AF Corse",       "A. Pier Guidi",   LMH},
+    {"AF Corse (Yellow)",      "Robert Kubica",   LMH},
+    {"Peugeot TotalEnergies",  "Paul Di Resta",   LMH},
+    {"Peugeot TotalEnergies",  "Loic Duval",      LMH},
+    {"Proton Competition",     "Neel Jani",       LMH},
+    {"Cadillac WTR",           "Ricky Taylor",    LMH},
+    {"Cadillac Whelen",        "Jack Aitken",     LMH},
+
+    // --- LMP2 ---
+    {"Iron Lynx Proton",       "Jonas Ried",      LMP2},
+    {"Proton Competition",     "Giorgio Roda",    LMP2},
+    {"United Autosports",      "R. van der Zande",LMP2},
+    {"United Autosports",      "Daniel Schneider",LMP2},
+    {"Inter Europol",          "Jakub Smiechowski",LMP2},
+    {"IDEC Sport",             "Paul Lafargue",   LMP2},
+    {"AO by TF",               "PJ Hyett",        LMP2},
+    {"Algarve Pro Racing",     "Matthias Kaiser", LMP2},
+    {"Vector Sport",           "Ryan Cullen",     LMP2}, // Placeholder for 'Persport' in PDF likely Vector/similar
+
+    // --- LMGT3 ---
+    {"Team WRT (BMW)",         "Valentino Rossi", LMGT3},
+    {"Team WRT (BMW)",         "Yasser Shahin",   LMGT3},
+    {"Iron Dames",             "Sarah Bovy",      LMGT3},
+    {"Manthey PureRxcing",     "Antares Au",      LMGT3},
+    {"Manthey EMA",            "Ryan Hardwick",   LMGT3},
+    {"TF Sport (Corvette)",    "Tom Van Rompuy",  LMGT3},
+    {"TF Sport (Corvette)",    "Hiroshi Koizumi", LMGT3},
+    {"Vista AF Corse",         "Thomas Flohr",    LMGT3},
+    {"Vista AF Corse",         "Francois Heriau", LMGT3},
+    {"Heart of Racing",        "Ian James",       LMGT3},
+    {"Proton (Mustang)",       "Ben Tuck",        LMGT3},
+    {"Akkodis ASP (Lexus)",    "Arnold Robin",    LMGT3}
+};
+
+static const int TOTAL_ENTRIES = sizeof(REAL_ENTRIES) / sizeof(REAL_ENTRIES[0]);
+
+
+// Helper function for qsort
+int compare_cars(const void* a, const void* b) {
+    Car* carA = (Car*)a;
+    Car* carB = (Car*)b;
+
+    // 1. Sort by Laps (Descending)
+    if (carA->laps_completed > carB->laps_completed) return -1;
+    if (carA->laps_completed < carB->laps_completed) return 1;
+
+    // 2. Sort by Total Time (Ascending)
+    if (carA->total_race_time < carB->total_race_time) return -1;
+    if (carA->total_race_time > carB->total_race_time) return 1;
+
+    return 0;
+}
+
 void race_init(RaceContext* race, int num_cars_to_create) {
     if (!race) return;
 
+    // Cap the number of cars to our real data limit (or MAX_CARS)
+    if (num_cars_to_create > TOTAL_ENTRIES) {
+        num_cars_to_create = TOTAL_ENTRIES;
+        printf("Note: Capped car count to %d (number of real entries defined).\n", TOTAL_ENTRIES);
+    }
     if (num_cars_to_create > MAX_CARS) {
         num_cars_to_create = MAX_CARS;
     }
@@ -28,76 +104,36 @@ void race_init(RaceContext* race, int num_cars_to_create) {
 
     race->num_cars = num_cars_to_create;
     race->elapsed_time = 0.0;
-    race->is_running = false; // Waiting for start command
-
+    race->is_running = false; 
+    
     race->safety_car_active = false;
     race->safety_car_timer = 0;
-    
-    // Initialize Weather
+
     race->weather = WEATHER_SUNNY;
-    race->weather_timer = 50; // Weather stays stable for at least 50 ticks
-        
-    // Seed the random number generator
+    race->weather_timer = 50; 
+
     srand(time(NULL));
 
-    // Populate the grid
+    // --- POPULATE FROM REAL ENTRIES ---
     for (int i = 0; i < num_cars_to_create; i++) {
-        CarCategory cat;
-        const char* team;
+        const RaceEntry* entry = &REAL_ENTRIES[i];
         
-        // Distribute categories roughly: 20% Hypercar, 30% LMP2, 50% GT3
-        int rand_cat = rand() % 100;
-        if (rand_cat < 20) {
-            cat = LMH;
-            team = LMH_TEAMS[rand() % 5];
-        } else if (rand_cat < 50) {
-            cat = LMP2;
-            team = LMP2_TEAMS[rand() % 4];
-        } else {
-            cat = LMGT3;
-            team = GT3_TEAMS[rand() % 4];
-        }
-
-        const char* driver = DRIVERS[rand() % 7];
-        
-        // Initialize the car (ID starts at 1)
-        car_init(&race->cars[i], i + 1, team, driver, cat);
+        // Initialize the car with the specific data from our list
+        car_init(&race->cars[i], i + 1, entry->team, entry->driver, entry->category);
     }
     
-    printf("Race initialized with %d cars.\n", num_cars_to_create);
-}
-
-void race_cleanup(RaceContext* race) {
-    if (race && race->cars) {
-        free(race->cars);
-        race->cars = NULL;
-    }
-}
-
-// Helper function for qsort
-// Returns -1 if A is better (ahead), 1 if B is better, 0 if equal
-int compare_cars(const void* a, const void* b) {
-    Car* carA = (Car*)a;
-    Car* carB = (Car*)b;
-
-    // 1. Sort by Laps (Descending)
-    if (carA->laps_completed > carB->laps_completed) return -1;
-    if (carA->laps_completed < carB->laps_completed) return 1;
-
-    // 2. Sort by Total Time (Ascending) - smaller time means they finished the lap earlier
-    if (carA->total_race_time < carB->total_race_time) return -1;
-    if (carA->total_race_time > carB->total_race_time) return 1;
-
-    return 0;
+    printf("Race initialized with %d cars from 2025 Entry List.\n", num_cars_to_create);
 }
 
 void race_run_step(RaceContext* race) {
     if (!race || !race->cars) return;
 
-    // --- 1. Manage Safety Car (Existing Logic) ---
+    // --- 1. Manage Safety Car ---
     if (race->safety_car_active) {
         race->safety_car_timer--;
-        if (race->safety_car_timer <= 0) race->safety_car_active = false;
+        if (race->safety_car_timer <= 0) {
+            race->safety_car_active = false;
+        }
     } else {
         if ((rand() % 100) < 1) { 
             race->safety_car_active = true;
@@ -105,7 +141,7 @@ void race_run_step(RaceContext* race) {
         }
     }
 
-    // --- 2. NEW: Manage Weather ---
+    // --- 2. Manage Weather ---
     if (race->weather_timer > 0) {
         race->weather_timer--;
     } else {
@@ -113,21 +149,31 @@ void race_run_step(RaceContext* race) {
         if ((rand() % 100) < 1) {
             if (race->weather == WEATHER_SUNNY) {
                 race->weather = WEATHER_RAIN;
-                race->weather_timer = 100; // Rain lasts at least 100 ticks
+                race->weather_timer = 100;
             } else {
                 race->weather = WEATHER_SUNNY;
-                race->weather_timer = 100; // Sun lasts at least 100 ticks
+                race->weather_timer = 100;
             }
         }
     }
 
     // --- 3. Update each car ---
     for (int i = 0; i < race->num_cars; i++) {
-        // NEW: Pass weather state (cast to int)
+        // Pass weather state (cast to int)
         car_update(&race->cars[i], 1.0, race->safety_car_active, (int)race->weather);
     }
 
-    // --- 4. Sort and Time ---
+    // --- 4. Sort the grid ---
     qsort(race->cars, race->num_cars, sizeof(Car), compare_cars);
+
+    // --- 5. Update global race time ---
     race->elapsed_time += 40.0; 
+}
+
+void race_cleanup(RaceContext* race) {
+    if (race && race->cars) {
+        free(race->cars);
+        race->cars = NULL;
+        printf("Memory cleaned up.\n");
+    }
 }

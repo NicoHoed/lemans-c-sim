@@ -135,7 +135,7 @@ void print_status(RaceContext* race) {
 
 int main(void) {
     RaceContext race;
-    race_init(&race, 10); // Create 10 cars
+    race_init(&race, 30); // Create x cars
 
     printf("Starting Race...\n");
     sleep(1);
