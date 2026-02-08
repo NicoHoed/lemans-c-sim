@@ -48,7 +48,7 @@ typedef struct {
 // Initializes a car with default values
 void car_init(Car* car, int id, const char* team, const char* driver, CarCategory cat);
 
-// Updates the car state for one simulation step
-void car_update(Car* car, double delta_time);
+// Update the prototype to accept both time delta and safety car flag
+void car_update(Car* car, double delta_time, bool is_safety_car);
 
 #endif

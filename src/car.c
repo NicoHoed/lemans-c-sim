@@ -50,56 +50,67 @@ static double get_base_sector_time(CarCategory cat) {
     }
 }
 
-void car_update(Car* car, double delta_time) {
-    (void)delta_time; // Not used in this specific logic version yet
+// Updated function signature
+void car_update(Car* car, double delta_time, bool is_safety_car) {
+    
+    (void)delta_time; // Mark as unused to avoid warnings for now
+
+    // 0. Reset State if we were pitting
+    if (car->state == PIT_STOP) {
+        car->state = RACING;
+    }
 
     // 1. Calculate Sector Time
     double time = get_base_sector_time(car->category);
     
-    // Add randomness (0.0 to 2.0 seconds) - traffic/driver skill
-    double random_variation = (rand() % 200) / 100.0;
-    time += random_variation;
+    // SAFETY CAR LOGIC
+    if (is_safety_car) {
+        // Under SC, everyone drives slow (~80s per sector)
+        time = 80.0 + ((rand() % 100) / 100.0); 
+        
+        car->fuel_level -= 0.2;
+        car->tire_wear += 0.05; 
+    } 
+    else {
+        // RACING LOGIC
+        double random_variation = (rand() % 200) / 100.0; 
+        double wear_penalty = (car->tire_wear / 100.0) * 3.0; 
+        
+        time += random_variation + wear_penalty;
 
-    // Add tire wear penalty (e.g., if tires are 50% worn, add 1.5s)
-    double wear_penalty = (car->tire_wear / 100.0) * 3.0; 
-    time += wear_penalty;
+        // Resource consumption
+        if (car->category == LMH) car->fuel_level -= 2.5;
+        else if (car->category == LMP2) car->fuel_level -= 2.1;
+        else car->fuel_level -= 1.8;
 
-    // 2. Consume Resources
-    if (car->category == LMH) car->fuel_level -= FUEL_BURN_LMH;
-    else if (car->category == LMP2) car->fuel_level -= FUEL_BURN_LMP2;
-    else car->fuel_level -= FUEL_BURN_GT3;
+        car->tire_wear += 0.8 + ((rand() % 50)/100.0);
+    }
 
-    car->tire_wear += TIRE_WEAR_RATE + ((rand() % 50)/100.0); // Random wear
+    // 2. Check for Pit Stop needs (Only if not already pitting)
+    // Trigger if Fuel < 5L OR Tires > 85% worn
+    if (car->state == RACING && (car->fuel_level < 5.0 || car->tire_wear > 85.0)) {
+        car->state = PIT_STOP;
+        
+        // Add the Pit Penalty (approx 45s)
+        time += 45.0;
 
-    // 3. Update Car Data
+        // Reset resources
+        car->fuel_level = 100.0;
+        car->tire_wear = 0.0;
+        // Pense à ajouter 'int pit_stops_count' dans ta struct Car si tu veux compter les arrêts
+    }
+
+    // 3. Update Telemetry
     car->sector_times[car->current_sector] = time;
     car->current_lap_time += time;
     car->total_race_time += time;
 
-    // 4. Move to next sector
+    // 4. Move sector
     car->current_sector++;
-
-    // 5. Check for Lap Completion
     if (car->current_sector > 2) {
         car->laps_completed++;
         car->last_lap_time = car->current_lap_time;
-        
-        // Reset for next lap
         car->current_lap_time = 0.0;
         car->current_sector = 0;
-        
-        // Simple Pit Stop Logic (Reset if fuel low or tires dead)
-        if (car->fuel_level < 10.0 || car->tire_wear > 80.0) {
-            car->state = PIT_STOP;
-            // Add pit stop time penalty (e.g., 40s)
-            car->total_race_time += 40.0;
-            car->last_lap_time += 40.0; // Pit is part of the lap
-            
-            // Refuel & New Tires
-            car->fuel_level = 100.0;
-            car->tire_wear = 0.0;
-        } else {
-            car->state = RACING;
-        }
     }
 }

@@ -11,6 +11,8 @@ typedef struct {
     
     double elapsed_time;    // Time elapsed since race start (seconds)
     bool is_running;        // Simulation running flag
+    bool safety_car_active;  // true = Yellow Flags / SC deployed
+    int safety_car_timer;    // How many ticks the SC stays out
     
     // We can add weather here later
 } RaceContext;

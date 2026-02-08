@@ -87,10 +87,11 @@ int compare_cars(const void* a, const void* b) {
 
 void race_run_step(RaceContext* race) {
     if (!race || !race->cars) return;
-
-    // 1. Update physics/logic for all cars
+    
+    // 2. Update each car
     for (int i = 0; i < race->num_cars; i++) {
-        car_update(&race->cars[i], 1.0);
+        // Pass BOTH delta_time and safety_car status
+        car_update(&race->cars[i], 1.0, race->safety_car_active);
     }
 
     // 2. Sort the grid to determine positions
