@@ -3,11 +3,20 @@
 #include <unistd.h> // For sleep()
 #include "race.h"
 
+// ANSI Color Codes
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_MAGENTA "\x1b[35m"
+#define ANSI_COLOR_CYAN    "\x1b[36m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
 void print_status(RaceContext* race) {
     // Clear console
     printf("\033[H\033[J"); 
-    
-    // Convert seconds to HH:MM:SS format
+
+    // Time formatting
     int hours = (int)race->elapsed_time / 3600;
     int minutes = ((int)race->elapsed_time % 3600) / 60;
     int seconds = (int)race->elapsed_time % 60;
@@ -15,23 +24,38 @@ void print_status(RaceContext* race) {
     printf("=== LE MANS 24H SIMULATION ===\n");
     printf("Race Time: %02dh %02dm %02ds\n\n", hours, minutes, seconds);
     
-    printf("%-3s | %-4s | %-20s | %-8s | %-8s | %-12s | %-6s\n", 
-           "Pos", "#", "Team", "Cat", "Laps", "Gap", "Tires");
-    printf("------------------------------------------------------------------------------\n");
+    // Header
+    printf("%-4s | %-20s | %-10s | %-8s | %-12s | %-10s | %-6s\n", 
+           "Pos", "Team", "Cat", "Laps", "Gap", "State", "Tires");
+    printf("--------------------------------------------------------------------------------------\n");
 
-    // Get leader's data for gap calculation
+    if (race->num_cars == 0) return;
+
     Car* leader = &race->cars[0];
 
     for (int i = 0; i < race->num_cars; i++) {
         Car* c = &race->cars[i];
         
-        // Format Category
+        // 1. Determine Category Color & String
+        char* cat_color = ANSI_COLOR_RESET;
         char cat_str[10];
-        if(c->category == LMH) sprintf(cat_str, "HYPER");
-        else if(c->category == LMP2) sprintf(cat_str, "LMP2");
-        else sprintf(cat_str, "GT3");
+        
+        switch (c->category) {
+            case LMH:
+                cat_color = ANSI_COLOR_RED;
+                sprintf(cat_str, "HYPER");
+                break;
+            case LMP2:
+                cat_color = ANSI_COLOR_BLUE;
+                sprintf(cat_str, "LMP2");
+                break;
+            case LMGT3:
+                cat_color = ANSI_COLOR_YELLOW;
+                sprintf(cat_str, "LMGT3");
+                break;
+        }
 
-        // Format Gap
+        // 2. Calculate Gap
         char gap_str[20];
         if (i == 0) {
             sprintf(gap_str, "LEADER");
@@ -45,16 +69,30 @@ void print_status(RaceContext* race) {
             }
         }
 
-        // Color coding for tires (ANSI escape codes)
-        // Green if > 70%, Yellow if > 40%, Red if < 40% (inverted for wear: 0 is new)
-        char* color = "";
-        if (c->tire_wear < 30.0) color = "\033[0;32m"; // Green (New)
-        else if (c->tire_wear < 70.0) color = "\033[0;33m"; // Yellow (Used)
-        else color = "\033[0;31m"; // Red (Worn)
+        // 3. Determine State String (Racing or Pit)
+        char state_str[10];
+        char* state_color = ANSI_COLOR_GREEN;
         
-        printf("%-3d | #%-3d | %-20s | %-8s | %-8d | %-12s | %s%.0f%%%s\n", 
-               i + 1, c->id, c->team_name, cat_str, c->laps_completed, gap_str, 
-               color, c->tire_wear, "\033[0m");
+        if (c->state == PIT_STOP) {
+            sprintf(state_str, "IN PIT");
+            state_color = ANSI_COLOR_MAGENTA; // Purple for Pit
+        } else if (c->state == CRASHED) {
+            sprintf(state_str, "CRASH");
+            state_color = ANSI_COLOR_RED;
+        } else {
+            sprintf(state_str, "RUN");
+        }
+
+        // 4. Print the row
+        // We print the category color, then the category text, then reset immediately
+        printf("%-4d | %-20s | %s%-10s%s | %-8d | %-12s | %s%-10s%s | %.0f%%\n", 
+               i + 1, 
+               c->team_name, 
+               cat_color, cat_str, ANSI_COLOR_RESET, // Colored Category
+               c->laps_completed, 
+               gap_str,
+               state_color, state_str, ANSI_COLOR_RESET, // Colored State
+               c->tire_wear);
     }
 }
 
