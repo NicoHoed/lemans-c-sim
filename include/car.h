@@ -15,7 +15,7 @@ typedef enum {
     RACING,
     PIT_STOP,
     CRASHED,
-    RETIRED
+    RETIRED // Ensure this exists
 } CarState;
 
 // Tire Compounds
@@ -39,12 +39,14 @@ typedef struct {
     // Performance & Telemetry
     double speed_kmh;       
     double fuel_level;      
-    double tire_wear;       // 0.0 (new) to 100.0 (destroyed)
+    double tire_wear;
     
-    // NEW: Current Tire
+    // NEW: Mechanical Reliability (100.0 = Perfect, <= 0.0 = Broken)
+    double reliability;
+    
     TireCompound current_tires;
 
-    // Timing (in seconds)
+    // Timing
     double current_lap_time;
     double last_lap_time;
     double sector_times[3]; 
@@ -57,9 +59,6 @@ typedef struct {
 
 // Function Prototypes
 void car_init(Car* car, int id, const char* team, const char* driver, CarCategory cat);
-
-// NEW: Update prototype to include weather_state
-// weather_state: 0 = Sunny, 1 = Rain (mapped to enum in race.h)
 void car_update(Car* car, double delta_time, bool is_safety_car, int weather_state);
 
 #endif

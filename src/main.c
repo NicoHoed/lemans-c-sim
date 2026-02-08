@@ -11,6 +11,7 @@
 #define ANSI_COLOR_MAGENTA "\x1b[35m"
 #define ANSI_COLOR_CYAN    "\x1b[36m"
 #define ANSI_COLOR_WHITE   "\x1b[37m"
+#define ANSI_COLOR_GRAY    "\x1b[90m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
 void print_status(RaceContext* race) {
@@ -22,7 +23,7 @@ void print_status(RaceContext* race) {
 
     printf("=== LE MANS 24H SIMULATION ===\n");
     
-    // --- WEATHER DISPLAY ---
+    // Weather
     if (race->weather == WEATHER_RAIN) {
          printf("Weather: 🌧️  %sRAIN / WET TRACK%s  Time: %02dh %02dm %02ds\n", 
                 ANSI_COLOR_BLUE, ANSI_COLOR_RESET, hours, minutes, seconds);
@@ -31,7 +32,7 @@ void print_status(RaceContext* race) {
                 ANSI_COLOR_YELLOW, ANSI_COLOR_RESET, hours, minutes, seconds);
     }
 
-    // --- SAFETY CAR ALERT ---
+    // Safety Car
     if (race->safety_car_active) {
         printf("\n\033[43m\033[30m"); 
         printf("************************************************************************\n");
@@ -44,8 +45,8 @@ void print_status(RaceContext* race) {
     
     // Header
     printf("%-4s | %-20s | %-10s | %-8s | %-12s | %-10s | %-10s | %-6s\n", 
-           "Pos", "Team", "Cat", "Laps", "Gap", "State", "Tire", "Wear");
-    printf("-------------------------------------------------------------------------------------------------\n");
+           "Pos", "Team", "Cat", "Laps", "Gap", "State", "Tire", "Rel%");
+    printf("--------------------------------------------------------------------------------------------------------\n");
 
     if (race->num_cars == 0) return;
     Car* leader = &race->cars[0];
@@ -53,17 +54,33 @@ void print_status(RaceContext* race) {
     for (int i = 0; i < race->num_cars; i++) {
         Car* c = &race->cars[i];
         
+        // NEW: Check if retired to override colors
+        bool is_retired = (c->state == RETIRED);
+        char* base_color = is_retired ? ANSI_COLOR_GRAY : ANSI_COLOR_RESET;
+
         // 1. Categories
         char* cat_color = ANSI_COLOR_RESET;
         char cat_str[10];
-        if (c->category == LMH) { cat_color = ANSI_COLOR_RED; sprintf(cat_str, "HYPER"); }
-        else if (c->category == LMP2) { cat_color = ANSI_COLOR_BLUE; sprintf(cat_str, "LMP2"); }
-        else { cat_color = ANSI_COLOR_YELLOW; sprintf(cat_str, "LMGT3"); }
+        
+        if (is_retired) {
+             cat_color = ANSI_COLOR_GRAY; // Grey out category too
+        } else {
+            if (c->category == LMH) cat_color = ANSI_COLOR_RED;
+            else if (c->category == LMP2) cat_color = ANSI_COLOR_BLUE;
+            else cat_color = ANSI_COLOR_YELLOW;
+        }
+        
+        if (c->category == LMH) sprintf(cat_str, "HYPER");
+        else if (c->category == LMP2) sprintf(cat_str, "LMP2");
+        else sprintf(cat_str, "LMGT3");
 
         // 2. Gap
         char gap_str[20];
-        if (i == 0) sprintf(gap_str, "LEADER");
-        else {
+        if (is_retired) {
+            sprintf(gap_str, "---");
+        } else if (i == 0) {
+            sprintf(gap_str, "LEADER");
+        } else {
             int lap_diff = leader->laps_completed - c->laps_completed;
             if (lap_diff > 0) sprintf(gap_str, "+%d Laps", lap_diff);
             else sprintf(gap_str, "+%.1f s", c->total_race_time - leader->total_race_time);
@@ -72,27 +89,47 @@ void print_status(RaceContext* race) {
         // 3. State
         char state_str[10];
         char* state_color = ANSI_COLOR_GREEN;
-        if (c->state == PIT_STOP) { sprintf(state_str, "IN PIT"); state_color = ANSI_COLOR_MAGENTA; }
-        else if (c->state == CRASHED) { sprintf(state_str, "CRASH"); state_color = ANSI_COLOR_RED; }
-        else sprintf(state_str, "RUN");
-
-        // 4. NEW: Tire Display
-        char tire_str[10];
-        char* tire_color = ANSI_COLOR_WHITE;
-        switch(c->current_tires) {
-            case TIRE_SOFT:   sprintf(tire_str, "(S)oft"); tire_color = ANSI_COLOR_RED; break;
-            case TIRE_MEDIUM: sprintf(tire_str, "(M)edium"); tire_color = ANSI_COLOR_YELLOW; break;
-            case TIRE_HARD:   sprintf(tire_str, "(H)ard"); tire_color = ANSI_COLOR_WHITE; break;
-            case TIRE_WET:    sprintf(tire_str, "(W)et"); tire_color = ANSI_COLOR_BLUE; break;
+        
+        if (is_retired) {
+            sprintf(state_str, "DNF");
+            state_color = ANSI_COLOR_RED; // Keep DNF red for visibility, or make it Gray
+        } else if (c->state == PIT_STOP) {
+            sprintf(state_str, "IN PIT");
+            state_color = ANSI_COLOR_MAGENTA; 
+        } else if (c->state == CRASHED) {
+            sprintf(state_str, "CRASH");
+            state_color = ANSI_COLOR_RED;
+        } else {
+            sprintf(state_str, "RUN");
         }
 
-        printf("%-4d | %-20s | %s%-10s%s | %-8d | %-12s | %s%-10s%s | %s%-10s%s | %.0f%%\n", 
-               i + 1, c->team_name, 
+        // 4. Tire
+        char tire_str[10];
+        char* tire_color = ANSI_COLOR_WHITE;
+        
+        if (is_retired) {
+            tire_color = ANSI_COLOR_GRAY;
+            sprintf(tire_str, "---");
+        } else {
+            switch(c->current_tires) {
+                case TIRE_SOFT:   sprintf(tire_str, "(S)oft"); tire_color = ANSI_COLOR_RED; break;
+                case TIRE_MEDIUM: sprintf(tire_str, "(M)edium"); tire_color = ANSI_COLOR_YELLOW; break;
+                case TIRE_HARD:   sprintf(tire_str, "(H)ard"); tire_color = ANSI_COLOR_WHITE; break;
+                case TIRE_WET:    sprintf(tire_str, "(W)et"); tire_color = ANSI_COLOR_BLUE; break;
+            }
+        }
+
+        // Print Row
+        // Notice we use 'base_color' for text that doesn't have specific highlighting
+        printf("%s%-4d%s | %s%-20s%s | %s%-10s%s | %s%-8d%s | %s%-12s%s | %s%-10s%s | %s%-10s%s | %s%.0f%%%s\n", 
+               base_color, i + 1, ANSI_COLOR_RESET,
+               base_color, c->team_name, ANSI_COLOR_RESET,
                cat_color, cat_str, ANSI_COLOR_RESET, 
-               c->laps_completed, gap_str,
+               base_color, c->laps_completed, ANSI_COLOR_RESET,
+               base_color, gap_str, ANSI_COLOR_RESET,
                state_color, state_str, ANSI_COLOR_RESET,
                tire_color, tire_str, ANSI_COLOR_RESET,
-               c->tire_wear);
+               base_color, c->reliability, ANSI_COLOR_RESET);
     }
 }
 
