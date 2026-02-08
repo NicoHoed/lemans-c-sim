@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h> // For logic (if needed later)
 #include "car.h"
 #include "core.h"
 
@@ -30,6 +29,9 @@ void car_init(Car* car, int id, const char* team, const char* driver, CarCategor
     car->fuel_level = 100.0; 
     car->tire_wear = 0.0;
 
+    // Start on Slick tires (Randomly Soft or Medium)
+    car->current_tires = (rand() % 2 == 0) ? TIRE_SOFT : TIRE_MEDIUM;
+    
     car->current_lap_time = 0.0;
     car->last_lap_time = 0.0;
     car->total_race_time = 0.0;
@@ -50,62 +52,114 @@ static double get_base_sector_time(CarCategory cat) {
     }
 }
 
-// Updated function signature
-void car_update(Car* car, double delta_time, bool is_safety_car) {
-    
-    (void)delta_time; // Mark as unused to avoid warnings for now
+void car_update(Car* car, double delta_time, bool is_safety_car, int weather_state) {
+    (void)delta_time; 
 
-    // 0. Reset State if we were pitting
+    // 0. Reset Pit State
     if (car->state == PIT_STOP) {
         car->state = RACING;
     }
 
-    // 1. Calculate Sector Time
     double time = get_base_sector_time(car->category);
-    
-    // SAFETY CAR LOGIC
+    bool is_raining = (weather_state == 1); // 1 = WEATHER_RAIN
+
+    // --- PHYSICS ENGINE ---
+
     if (is_safety_car) {
-        // Under SC, everyone drives slow (~80s per sector)
-        time = 80.0 + ((rand() % 100) / 100.0); 
-        
+        time = 80.0 + ((rand() % 100) / 100.0);
         car->fuel_level -= 0.2;
         car->tire_wear += 0.05; 
     } 
     else {
-        // RACING LOGIC
-        double random_variation = (rand() % 200) / 100.0; 
-        double wear_penalty = (car->tire_wear / 100.0) * 3.0; 
+        // 1. Tire Performance Modifiers
+        double tire_perf_mod = 0.0;
+        double wear_rate_mod = 1.0;
+
+        if (is_raining) {
+            // RAIN PHYSICS
+            if (car->current_tires == TIRE_WET) {
+                // Wets in rain = Normal speed but slower than dry track
+                tire_perf_mod = 5.0; // Rain is naturally slower
+                wear_rate_mod = 1.0;
+            } else {
+                // SLICKS IN RAIN = DISASTER
+                tire_perf_mod = 25.0; // Massive penalty (sliding everywhere)
+                wear_rate_mod = 0.5;  // Sliding doesn't wear tires as much as grip
+            }
+        } else {
+            // DRY PHYSICS
+            if (car->current_tires == TIRE_SOFT) {
+                tire_perf_mod = -0.5; // Fast
+                wear_rate_mod = 1.2;  // High wear
+            } else if (car->current_tires == TIRE_MEDIUM) {
+                tire_perf_mod = 0.0;  // Baseline
+                wear_rate_mod = 1.0;
+            } else if (car->current_tires == TIRE_HARD) {
+                tire_perf_mod = 0.6;  // Slow
+                wear_rate_mod = 0.7;  // Low wear
+            } else if (car->current_tires == TIRE_WET) {
+                // WETS IN DRY = OVERHEAT
+                tire_perf_mod = 3.0;  // Slow
+                wear_rate_mod = 3.0;  // Destroyed instantly
+            }
+        }
+
+        // Apply Logic
+        double random_var = (rand() % 200) / 100.0; 
+        double wear_penalty = (car->tire_wear / 100.0) * 4.0; // Wear slows you down
         
-        time += random_variation + wear_penalty;
+        time += random_var + wear_penalty + tire_perf_mod;
 
-        // Resource consumption
-        if (car->category == LMH) car->fuel_level -= 2.5;
-        else if (car->category == LMP2) car->fuel_level -= 2.1;
-        else car->fuel_level -= 1.8;
-
-        car->tire_wear += 0.8 + ((rand() % 50)/100.0);
+        // Resource Consumption
+        // (Simplified fuel burn)
+        car->fuel_level -= 2.0; 
+        car->tire_wear += (0.8 * wear_rate_mod) + ((rand() % 50)/100.0);
     }
 
-    // 2. Check for Pit Stop needs (Only if not already pitting)
-    // Trigger if Fuel < 5L OR Tires > 85% worn
-    if (car->state == RACING && (car->fuel_level < 5.0 || car->tire_wear > 85.0)) {
-        car->state = PIT_STOP;
-        
-        // Add the Pit Penalty (approx 45s)
-        time += 45.0;
+    // --- AI STRATEGY (PIT STOPS) ---
+    
+    bool need_pit = false;
+    
+    // 1. Check Resources
+    if (car->fuel_level < 5.0 || car->tire_wear > 85.0) need_pit = true;
 
-        // Reset resources
+    // 2. Check Strategy (Wrong Tires)
+    if (car->state == RACING) {
+        if (is_raining && car->current_tires != TIRE_WET) {
+            need_pit = true; // FORCE PIT: It's raining and we are on slicks!
+        }
+        else if (!is_raining && car->current_tires == TIRE_WET) {
+            need_pit = true; // FORCE PIT: Dry track and we are melting wet tires!
+        }
+    }
+
+    // Execute Pit Stop
+    if (car->state == RACING && need_pit) {
+        car->state = PIT_STOP;
+        time += 45.0; // Pit Penalty
+
+        // Refuel & Reset Wear
         car->fuel_level = 100.0;
         car->tire_wear = 0.0;
-        // Pense à ajouter 'int pit_stops_count' dans ta struct Car si tu veux compter les arrêts
+
+        // SELECT NEW TIRES
+        if (is_raining) {
+            car->current_tires = TIRE_WET;
+        } else {
+            // In dry, choose Soft or Medium randomly for variety
+            // Or choose Hard if it's night (future feature)
+            int r = rand() % 3;
+            if (r == 0) car->current_tires = TIRE_SOFT;
+            else if (r == 1) car->current_tires = TIRE_MEDIUM;
+            else car->current_tires = TIRE_HARD;
+        }
     }
 
-    // 3. Update Telemetry
+    // --- TELEMETRY UPDATE ---
     car->sector_times[car->current_sector] = time;
     car->current_lap_time += time;
     car->total_race_time += time;
 
-    // 4. Move sector
     car->current_sector++;
     if (car->current_sector > 2) {
         car->laps_completed++;

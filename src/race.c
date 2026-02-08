@@ -30,6 +30,13 @@ void race_init(RaceContext* race, int num_cars_to_create) {
     race->elapsed_time = 0.0;
     race->is_running = false; // Waiting for start command
 
+    race->safety_car_active = false;
+    race->safety_car_timer = 0;
+    
+    // Initialize Weather
+    race->weather = WEATHER_SUNNY;
+    race->weather_timer = 50; // Weather stays stable for at least 50 ticks
+        
     // Seed the random number generator
     srand(time(NULL));
 
@@ -64,7 +71,6 @@ void race_cleanup(RaceContext* race) {
     if (race && race->cars) {
         free(race->cars);
         race->cars = NULL;
-        printf("Memory cleaned up.\n");
     }
 }
 
@@ -88,28 +94,40 @@ int compare_cars(const void* a, const void* b) {
 void race_run_step(RaceContext* race) {
     if (!race || !race->cars) return;
 
-    // --- 1. Safety Car (SC) ---
+    // --- 1. Manage Safety Car (Existing Logic) ---
     if (race->safety_car_active) {
         race->safety_car_timer--;
-        if (race->safety_car_timer <= 0) {
-            race->safety_car_active = false; // La SC rentre, drapeau vert
-        }
+        if (race->safety_car_timer <= 0) race->safety_car_active = false;
     } else {
-        // 1% chance to deploy SC
         if ((rand() % 100) < 1) { 
             race->safety_car_active = true;
-            race->safety_car_timer = 5 + (rand() % 10); // Dure entre 5 et 15 ticks
+            race->safety_car_timer = 5 + (rand() % 10);
         }
     }
-    
-    // --- 2. Update each car ---
-    for (int i = 0; i < race->num_cars; i++) {
-        car_update(&race->cars[i], 1.0, race->safety_car_active);
+
+    // --- 2. NEW: Manage Weather ---
+    if (race->weather_timer > 0) {
+        race->weather_timer--;
+    } else {
+        // Small chance to toggle weather (1%)
+        if ((rand() % 100) < 1) {
+            if (race->weather == WEATHER_SUNNY) {
+                race->weather = WEATHER_RAIN;
+                race->weather_timer = 100; // Rain lasts at least 100 ticks
+            } else {
+                race->weather = WEATHER_SUNNY;
+                race->weather_timer = 100; // Sun lasts at least 100 ticks
+            }
+        }
     }
 
-    // --- 3. Sort the grid ---
-    qsort(race->cars, race->num_cars, sizeof(Car), compare_cars);
+    // --- 3. Update each car ---
+    for (int i = 0; i < race->num_cars; i++) {
+        // NEW: Pass weather state (cast to int)
+        car_update(&race->cars[i], 1.0, race->safety_car_active, (int)race->weather);
+    }
 
-    // --- 4. Update global time ---
+    // --- 4. Sort and Time ---
+    qsort(race->cars, race->num_cars, sizeof(Car), compare_cars);
     race->elapsed_time += 40.0; 
 }
